@@ -1,5 +1,6 @@
 import numpy as np
 import math
+import policy
 
 class EnvironmentModel:
     def __init__(self, n_states, n_actions, seed=None):
@@ -151,61 +152,119 @@ class GridWorld(Environment):
 
   def render(self):
     assert self.renderer, "No renderer available"
-
-    self.renderer.render(self)
+    self.renderer \
+      .reset() \
+      .set_show_states(True) \
+      .set_show_current_state(True) \
+      .set_show_goals(True) \
+      .set_show_traps(True) \
+      .set_show_walls(True) \
+      .render(self)
 
 class GridWorldRenderer:
   def __init__(self) -> None:
     self.cell_width = 20
-    self.cell_height = 5
+    self.cell_height = 8
+    self.cell_text_map = {}
+    self.show_current_state = False
+    self.show_states = False
+    self.show_goals = False
+    self.show_traps = False
+    self.show_walls = False
+
+  def add_cell_text(self, cell_id, cell_y, text):
+    text_key = str(cell_id) + "@" + str(cell_y)
+    self.cell_text_map[text_key] = text
+
+  def set_show_states(self, show):
+    self.show_states = show
+    return self
+
+  def set_show_current_state(self, show):
+    self.show_current_state = show
+    return self
+
+  def set_show_goals(self, show):
+    self.show_goals = show
+    return self
+
+  def set_show_traps(self, show):
+    self.show_traps = show
+    return self
+
+  def set_show_walls(self, show):
+    self.show_walls = show
+    return self
+
+  def reset(self):
+    self.cell_text_map = {}
+    self.show_current_state = False
+    self.show_states = False
+    self.show_goals = False
+    self.show_traps = False
+    self.show_walls = False
+    return self
 
   def render(self, world):
+    self.populate_default_cell_texts(world)
+
     for i in range(world.height):
       self.print_rowline(world)
       for j in range(self.cell_height):
-        self.print_columnline(world, i, j)
+        self.print_column_line(world, i, j)
 
     self.print_rowline(world)
     print(world.state)
 
-  def build_cell(self):
-    pass
+  def populate_default_cell_texts(self, world):
+    cell_mid_y = math.ceil(self.cell_height / 2)
+
+    if self.show_states:
+      for state in range(world.n_states):
+        self.add_cell_text(state, cell_mid_y - 1, str(state))
+
+    if self.show_goals:
+      for state in world.goal_states:
+        self.add_cell_text(state, cell_mid_y, "GOAL")
+
+    if self.show_traps:
+      for state in world.trap_states:
+        self.add_cell_text(state, cell_mid_y, "TRAP")
+
+    if self.show_walls:
+      for state in world.wall_indexes:
+        self.add_cell_text(state, cell_mid_y, "WALL")
+
+    if self.show_current_state:
+      self.add_cell_text(world.state, cell_mid_y + 1, "YOU ARE HERE")
+
 
   def print_rowline(self, world):
     row = ("-" * self.cell_width) * world.width
     print(row)
 
-  def print_columnline(self, world, column_id, cell_height_id):
-    cell_id_location = math.floor(self.cell_height / 2)
-    cell_type_location = cell_id_location + 1
-    current_state_location = cell_id_location - 1
+  def print_column_line(self, world, column_id, cell_y):
     columns = ""
     for row_id in range(world.width):
-      val_to_print = "|"  + (" " * (self.cell_width - 1))
-      if row_id  == world.width - 1:
-        val_to_print += "|"
-
-      col_id = (world.height - column_id - 1)
-      cell_id = (col_id * world.width) + row_id
-
-      if cell_height_id == cell_id_location:
-        val_to_print = self.insert(val_to_print, cell_id)
-
-      if cell_height_id == cell_type_location:
-        cell_type = "GOAL" if cell_id in world.goal_states else None
-        cell_type = "TRAP" if cell_id in world.trap_states else cell_type
-        cell_type = "WALL" if cell_id in world.wall_indexes else cell_type
-        if cell_type:
-          val_to_print = self.insert(val_to_print, cell_type)
-
-      if cell_height_id == current_state_location:
-        if cell_id == world.state:
-          val_to_print = self.insert(val_to_print, "YOU ARE HERE")
-
+      val_to_print = self.print_cell_line(world, row_id, column_id, cell_y)
 
       columns += val_to_print
     print(columns)
 
+  def print_cell_line(self, world, row_id, column_id, cell_y):
+    cell_line = "|"  + (" " * (self.cell_width - 1))
+    if row_id  == world.width - 1:
+      cell_line += "|"
+
+    col_id = (world.height - column_id - 1)
+    cell_id = (col_id * world.width) + row_id
+
+    cell_text_key = str(cell_id) + "@" + str(cell_y)
+    cell_text = self.cell_text_map.get(cell_text_key, None)
+    if cell_text:
+      cell_line = self.insert(cell_line, cell_text)
+
+    return cell_line
 
   def insert(self, string, value):
     string_arr = list(string)
@@ -219,6 +278,43 @@ class GridWorldRenderer:
 
     return "".join(string_arr)
 
+class PolicyRenderer():
+  def __init__(self, world, world_renderer) -> None:
+    self.world_renderer = world_renderer
+    self.world = world
+
+  def render(self, policy):
+    cell_mid_y = math.ceil(self.world_renderer.cell_height / 2)
+    self.world_renderer \
+      .reset() \
+      .set_show_states(True) \
+      .set_show_goals(True) \
+      .set_show_traps(True) \
+      .set_show_walls(True)
+
+    for state in range(self.world.n_states):
+      action = self.action_to_str(policy[state])
+      self.world_renderer.add_cell_text(state, cell_mid_y + 2, action)
+
+    self.world_renderer.render(self.world)
+
+  def action_to_str(self, action):
+    if action == 0: #UP
+      return "^"
+
+    if action == 1: #RIGHT
+      return "->"
+
+    if action == 2: #DOWN
+      return "v"
+
+    if action == 3: #LEFT
+      return "<-"
+
+    return "UNKNOWN"
+
+
+
 
 actions = ['w', 'd', 's', 'a']
 
@@ -229,15 +325,19 @@ env.reset()
 env.render()
 done = False
 
-while not done:
-  command = input('\nMove: ')
-  if command not in actions:
-    raise Exception('Invalid action')
+# while not done:
+#   command = input('\nMove: ')
+#   if command not in actions:
+#     raise Exception('Invalid action')
 
-  state, r, done = env.step(actions.index(command))
-  env.render()
-  print("State: {0}, Reward:{1}".format(state, r))
+#   state, r, done = env.step(actions.index(command))
+#   env.render()
+#   print("State: {0}, Reward:{1}".format(state, r))
 
+opt_policy = policy.policy_iteration(env, gamma=0.8, theta=0.001, max_iterations=20)
+print(opt_policy)
+policy_renderer = PolicyRenderer(env, renderer)
+policy_renderer.render(opt_policy)
 
 
 
