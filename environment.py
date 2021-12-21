@@ -313,9 +313,6 @@ class PolicyRenderer():
 
     return "UNKNOWN"
 
-
-
-
 actions = ['w', 'd', 's', 'a']
 
 env = GridWorld(width=4, height=3, max_steps=20, wall_indexes=[5], goal_states=[11], trap_states=[7])

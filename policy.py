@@ -49,7 +49,7 @@ def calculate_trasition_value(env, policy, next_state, state, action, values, ga
 def policy_evaluation(env, policy, gamma, theta, max_iterations):
   values = np.zeros(env.n_states, dtype=np.float)
 
-  for _iterartion in range(max_iterations):
+  for _ in range(max_iterations):
     max_delta = 0
     for state in range(env.n_states):
       initial_value = values[state]
@@ -76,7 +76,7 @@ def policy_improvement(env, policy, values, gamma):
 # POLICY ITERATION
 def policy_iteration(env, gamma, theta, max_iterations):
   policy = np.zeros(env.n_states, dtype=np.int)
-  for _iterations in range(max_iterations):
+  for _ in range(max_iterations):
     previous_policy = policy
     values = policy_evaluation(env, policy, gamma, theta, max_iterations)
     policy = policy_improvement(env, policy, values, gamma)
@@ -84,6 +84,16 @@ def policy_iteration(env, gamma, theta, max_iterations):
       break
 
   return policy
+
+# VALUE ITERATION
+def value_iteration(env, gamma, theta, max_iterations):
+  policy = np.zeros(env.n_states, dtype=np.int)
+  value = np.zeros(env.n_states, dtype=np.float)
+  for _ in range(max_iterations):
+    for state in range(env.n_states):
+      pass
+
+  return policy, value
 
 
 
