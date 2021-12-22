@@ -118,10 +118,10 @@ class FrozenLake(Environment):
 
     def transition_probability(self, next_state, state, action):
         state_probability_map = {}
-        slip_states = set([self.apply_action(state, act) for act in range(self.n_actions)])
+        slip_states = [self.apply_action(state, act) for act in range(self.n_actions)]
         slip_probability = self.slip / len(slip_states)
         for slip_state in slip_states:
-          state_probability_map[slip_state] = slip_probability
+          state_probability_map[slip_state] = state_probability_map.get(slip_state, 0) + slip_probability
 
         expected_state = self.apply_action(state, action)
         state_probability_map[expected_state] += (1 - self.slip)
@@ -245,6 +245,17 @@ def play(env):
         env.render()
         print('State: {0}, Reward: {1}.'.format(state, r))
 
+def test_transition_probs(test_env):
+  test_probs = np.load("p.npy")
+  env_probs = np.ones(test_probs.shape)
+  for next_state in range(test_probs.shape[0]):
+    for state in range(test_probs.shape[1]):
+      for action in range(test_probs.shape[2]):
+        env_probs[next_state][state][action] = test_env.p(next_state, state, action)
+
+  failures = env_probs != test_probs
+  num_failures = sum(failures.reshape(-1))
+  assert num_failures == 0, "# of discrepancies in transition probability: {0}".format(num_failures)
 
 
 lake =  [['&', '.', '.', '.'],
@@ -253,4 +264,5 @@ lake =  [['&', '.', '.', '.'],
         ['#', '.', '.', '$']]
 
 env = FrozenLake(lake, 0.1, 16)
+test_transition_probs(env)
 play(env)
