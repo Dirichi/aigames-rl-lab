@@ -1,5 +1,7 @@
 ################ Environment ################
 
+from solvers import q_learning, policy_iteration
+from solvers import sarsa
 import numpy as np
 import contextlib
 
@@ -174,6 +176,8 @@ class FrozenLake(Environment):
       return [x_idx, y_idx]
 
     def state_value(self, state):
+      if state == self.absorbing_state:
+        return ''
       return self.lake_flat[int(state)]
 
     def coords_to_state(self, coords):
@@ -264,5 +268,9 @@ lake =  [['&', '.', '.', '.'],
         ['#', '.', '.', '$']]
 
 env = FrozenLake(lake, 0.1, 16)
-test_transition_probs(env)
-play(env)
+# test_transition_probs(env)
+# play(env)
+# policy, value = sarsa(env, max_episodes=2000, eta=0.5, gamma=0.9, epsilon=0.5, seed=0)
+policy, value = q_learning(env, max_episodes=2000, eta=0.5, gamma=0.9, epsilon=0.5, seed=0)
+# policy, value = policy_iteration(env, gamma=0.9, theta=0.001, max_iterations=100)
+env.render(policy, value)
