@@ -13,7 +13,6 @@ def _printoptions(*args, **kwargs):
     finally:
         np.set_printoptions(**original)
 
-
 class EnvironmentModel:
     def __init__(self, n_states, n_actions, seed=None):
         self.n_states = n_states
@@ -80,6 +79,8 @@ class FrozenLake(Environment):
         """
         # start (&), frozen (.), hole (#), goal ($)
         self.lake = np.array(lake)
+        self.width = len(self.lake[0])
+        self.height = len(self.lake)
         self.lake_flat = self.lake.reshape(-1)
 
         self.slip = slip
@@ -91,8 +92,8 @@ class FrozenLake(Environment):
         pi[np.where(self.lake_flat == '&')[0]] = 1.0
 
         self.absorbing_state = n_states - 1
-
-        # TODO:
+        self.transition_probabilities = {}
+        Environment.__init__(self, n_states, n_actions, max_steps, pi, seed)
 
     def step(self, action):
         state, reward, done = Environment.step(self, action)
@@ -102,12 +103,104 @@ class FrozenLake(Environment):
         return state, reward, done
 
     def p(self, next_state, state, action):
-        # TODO:
-        return
+        """
+        Returns the probability of transitioning from state to next_state
+        after taking the given action in state.
+        """
+        transition = (next_state, state, action)
+        key = ",".join([str(el) for el in transition])
+        if key not in self.transition_probabilities:
+          prob = self.transition_probability(next_state, state, action)
+          self.transition_probabilities[key] = prob
+
+        return self.transition_probabilities[key]
+
+    def transition_probability(self, next_state, state, action):
+        state_probability_map = {}
+        slip_states = [self.apply_action(state, act) for act in range(self.n_actions)]
+        slip_probability = self.slip / len(slip_states)
+        for slip_state in slip_states:
+          state_probability_map[slip_state] = state_probability_map.get(slip_state, 0) + slip_probability
+
+        expected_state = self.apply_action(state, action)
+        state_probability_map[expected_state] += (1 - self.slip)
+        return state_probability_map.get(next_state, 0)
 
     def r(self, next_state, state, action):
-        # TODO:
-        return
+      if self.is_goal(state):
+        return 1
+
+      return 0
+
+    def apply_action(self, state, action):
+      """
+      Returns the expected next state after applying an action
+      in a state
+      """
+      if state == self.absorbing_state:
+        return state
+
+      if self.is_goal_or_hole(state):
+        return self.absorbing_state
+
+      state_coords = self.state_to_coords(state)
+      action_coords = self.action_to_coords(action)
+
+      next_state_coords = [
+        state_coords[0] + action_coords[0],
+        state_coords[1] + action_coords[1]
+      ]
+
+      next_state = self.coords_to_state(next_state_coords)
+      return next_state if self.valid_coords(next_state_coords) else state
+
+    def is_goal_or_hole(self, state):
+      return self.is_goal(state) or self.is_hole(state)
+
+    def is_goal(self, state):
+      return self.state_value(state) == "$"
+
+    def is_hole(self, state):
+      return self.state_value(state) == "#"
+
+    def state_to_coords(self, state):
+      assert state < len(self.lake_flat), "{0} can not be represented in coordinates".format(state)
+
+      x_idx = state % self.width
+      y_idx = (state - x_idx) / self.width
+      return [x_idx, y_idx]
+
+    def state_value(self, state):
+      if state == self.absorbing_state:
+        return ''
+      return self.lake_flat[int(state)]
+
+    def coords_to_state(self, coords):
+      return (coords[1] * self.width) + coords[0]
+
+    def valid_coords(self, coords):
+      if (coords[0] < 0) or (coords[0] >= self.width):
+        return False
+
+      if (coords[1] < 0) or (coords[1] >= self.height):
+        return False
+
+      return True
+
+    def action_to_coords(self, action):
+      if action == 0: #UP
+        return [0, -1]
+
+      if action == 1: #LEFT
+        return [-1, 0]
+
+      if action == 2: #DOWN
+        return [0, 1]
+
+      if action == 3: #RIGHT
+        return [1, 0]
+
+      return [0, 0]
 
     def render(self, policy=None, value=None):
         if policy is None:
@@ -133,6 +226,18 @@ class FrozenLake(Environment):
             with _printoptions(precision=3, suppress=True):
                 print(value[:-1].reshape(self.lake.shape))
 
+def test_transition_probs(test_env):
+    test_probs = np.load("p.npy")
+    env_probs = np.ones(test_probs.shape)
+    for next_state in range(test_probs.shape[0]):
+        for state in range(test_probs.shape[1]):
+            for action in range(test_probs.shape[2]):
+                env_probs[next_state][state][action] = test_env.p(next_state, state, action)
+
+    failures = env_probs != test_probs
+    num_failures = sum(failures.reshape(-1))
+    assert num_failures == 0, "# of discrepancies in transition probability: {0}".format(num_failures)
+
 def play(env):
     actions = ['w', 'a', 's', 'd']
 
@@ -150,32 +255,88 @@ def play(env):
         env.render()
         print('Reward: {0}.'.format(r))
 
+
+def epsilon_greedy_action(action_values, epsilon, random_state):
+  if len(set(action_values)) == 1:
+    return random_state.randint(len(action_values))
+
+  if random_state.random_sample() > epsilon:
+    return action_values.argmax()
+
+  return random_state.randint(len(action_values))
+
+
+################ Model-based algorithms helpers ################
+
+def calculate_trasition_value(env, policy, next_state, state, action, values, gamma):
+  prob_action = policy[state] == action
+  prob_next_state = env.p(next_state, state, action)
+  reward = env.r(next_state, state, action)
+  next_state_value = values[next_state]
+
+  return prob_action * prob_next_state * (reward + (gamma * next_state_value))
+
+def calculate_state_action_value(env, policy, state, action, values, gamma):
+  state_action_value = 0
+  for next_state in range(env.n_states):
+    transition_value = calculate_trasition_value(env, policy, next_state, state, action, values, gamma)
+    state_action_value += transition_value
+
+  return state_action_value
+
+def calculate_state_value(env, policy, state, values, gamma):
+  state_value = 0
+  for action in range(env.n_actions):
+    state_action_value = calculate_state_action_value(env, policy, state, action, values, gamma)
+    state_value += state_action_value
+
+  return state_value
+
 ################ Model-based algorithms ################
 
 def policy_evaluation(env, policy, gamma, theta, max_iterations):
-    value = np.zeros(env.n_states, dtype=np.float)
+  values = np.zeros(env.n_states, dtype=np.float)
 
-    # TODO:
+  for _ in range(max_iterations):
+    max_delta = 0
+    for state in range(env.n_states):
+      initial_value = values[state]
+      values[state] = calculate_state_value(env, policy, state, values, gamma)
+      delta = abs(values[state] - initial_value)
+      max_delta = max(max_delta, delta)
+    if max_delta < theta:
+      break
 
-    return value
+  return values
 
-def policy_improvement(env, value, gamma):
+# POLICY IMPROVEMENT
+def policy_improvement(env, values, gamma):
     policy = np.zeros(env.n_states, dtype=int)
-
-    # TODO:
+    # for state in range(env.n_states):
+    #     parametrized_q_func = parametrized_q_value(env, policy, state, values, gamma)
+    #     arg_max_action = arg_max(list(range(env.n_actions)), parametrized_q_func)
+    #     policy[state] = arg_max_action
 
     return policy
 
+# POLICY ITERATION
 def policy_iteration(env, gamma, theta, max_iterations, policy=None):
     if policy is None:
         policy = np.zeros(env.n_states, dtype=int)
     else:
         policy = np.array(policy, dtype=int)
 
-    # TODO:
+    values = np.zeros(env.n_states, dtype=np.float)
+    for _ in range(max_iterations):
+        previous_policy = policy
+        values = policy_evaluation(env, policy, gamma, theta, max_iterations)
+        policy = policy_improvement(env, values, gamma)
+        if (previous_policy == policy).all():
+            break
 
-    return policy, value
+    return policy, values
 
+# VALUE ITERATION
 def value_iteration(env, gamma, theta, max_iterations, value=None):
     if value is None:
         value = np.zeros(env.n_states)
@@ -197,8 +358,20 @@ def sarsa(env, max_episodes, eta, gamma, epsilon, seed=None):
     q = np.zeros((env.n_states, env.n_actions))
 
     for i in range(max_episodes):
-        s = env.reset()
-        # TODO:
+        state = env.reset()
+        done = False
+
+        action = epsilon_greedy_action(q[state], epsilon[i], random_state)
+
+        while not done:
+          next_state, reward, done = env.step(action)
+          next_action = epsilon_greedy_action(q[next_state], epsilon[i], random_state)
+          target_q_value = reward + (gamma * q[next_state][next_action])
+          temporal_difference = target_q_value - q[state][action]
+          q[state][action] = q[state][action] + (eta[i] * temporal_difference)
+
+          state = next_state
+          action = next_action
 
     policy = q.argmax(axis=1)
     value = q.max(axis=1)
@@ -214,8 +387,16 @@ def q_learning(env, max_episodes, eta, gamma, epsilon, seed=None):
     q = np.zeros((env.n_states, env.n_actions))
 
     for i in range(max_episodes):
-        s = env.reset()
-        # TODO:
+        state = env.reset()
+        done = False
+
+        while not done:
+          action = epsilon_greedy_action(q[state], epsilon[i], random_state)
+          next_state, reward, done = env.step(action)
+          temporal_difference = reward + (gamma * q[next_state].max()) - q[state][action]
+          q[state][action] = q[state][action] + (eta[i] * temporal_difference)
+
+          state = next_state
 
     policy = q.argmax(axis=1)
     value = q.max(axis=1)
@@ -291,8 +472,16 @@ def linear_q_learning(env, max_episodes, eta, gamma, epsilon, seed=None):
 
     for i in range(max_episodes):
         features = env.reset()
+        done = False
 
-        # TODO:
+        while not done:
+            q = features.dot(theta)
+            action = epsilon_greedy_action(q, epsilon[i], random_state)
+            next_features, reward, done = env.step(action)
+            next_q = next_features.dot(theta)
+            delta = (reward + gamma * next_q.max()) - q[action]
+            theta = theta + (eta[i] * delta * features[action])
+            features = next_features
 
     return theta
 
@@ -308,6 +497,7 @@ def main():
               ['#', '.', '.', '$']]
 
     env = FrozenLake(lake, slip=0.1, max_steps=16, seed=seed)
+    test_transition_probs(env)
 
     print('# Model-based algorithms')
     gamma = 0.9
@@ -317,14 +507,14 @@ def main():
     print('')
 
     print('## Policy iteration')
-    policy, value = policy_iteration(env, gamma, theta, max_iterations)
-    env.render(policy, value)
+    # policy, value = policy_iteration(env, gamma, theta, max_iterations)
+    # env.render(policy, value)
 
     print('')
 
     print('## Value iteration')
-    policy, value = value_iteration(env, gamma, theta, max_iterations)
-    env.render(policy, value)
+    # policy, value = value_iteration(env, gamma, theta, max_iterations)
+    # env.render(policy, value)
 
     print('')
 
@@ -351,10 +541,10 @@ def main():
 
     print('## Linear Sarsa')
 
-    parameters = linear_sarsa(linear_env, max_episodes, eta,
-                              gamma, epsilon, seed=seed)
-    policy, value = linear_env.decode_policy(parameters)
-    linear_env.render(policy, value)
+    # parameters = linear_sarsa(linear_env, max_episodes, eta,
+                            #   gamma, epsilon, seed=seed)
+    # policy, value = linear_env.decode_policy(parameters)
+    # linear_env.render(policy, value)
 
     print('')
 
@@ -364,3 +554,5 @@ def main():
                                    gamma, epsilon, seed=seed)
     policy, value = linear_env.decode_policy(parameters)
     linear_env.render(policy, value)
+
+main()
