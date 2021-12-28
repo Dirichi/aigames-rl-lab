@@ -268,29 +268,29 @@ def epsilon_greedy_action(action_values, epsilon, random_state):
 
 ################ Model-based algorithms helpers ################
 
-def calculate_trasition_value(env, policy, next_state, state, action, values, gamma):
-  prob_action = policy[state] == action
+def trasition_value(env, next_state, state, action, values, gamma):
   prob_next_state = env.p(next_state, state, action)
   reward = env.r(next_state, state, action)
   next_state_value = values[next_state]
 
-  return prob_action * prob_next_state * (reward + (gamma * next_state_value))
+  return  prob_next_state * (reward + (gamma * next_state_value))
 
-def calculate_state_action_value(env, policy, state, action, values, gamma):
-  state_action_value = 0
+def state_action_value(env, policy, state, action, values, gamma):
+  total = 0
   for next_state in range(env.n_states):
-    transition_value = calculate_trasition_value(env, policy, next_state, state, action, values, gamma)
-    state_action_value += transition_value
+    prob_action = policy[state] == action
+    value = trasition_value(env, next_state, state, action, values, gamma)
+    total += (prob_action * value)
 
-  return state_action_value
+  return total
 
-def calculate_state_value(env, policy, state, values, gamma):
-  state_value = 0
+def state_value(env, policy, state, values, gamma):
+  total = 0
   for action in range(env.n_actions):
-    state_action_value = calculate_state_action_value(env, policy, state, action, values, gamma)
-    state_value += state_action_value
+    action_value = state_action_value(env, policy, state, action, values, gamma)
+    total += action_value
 
-  return state_value
+  return total
 
 ################ Model-based algorithms ################
 
@@ -301,7 +301,7 @@ def policy_evaluation(env, policy, gamma, theta, max_iterations):
     max_delta = 0
     for state in range(env.n_states):
       initial_value = values[state]
-      values[state] = calculate_state_value(env, policy, state, values, gamma)
+      values[state] = state_value(env, policy, state, values, gamma)
       delta = abs(values[state] - initial_value)
       max_delta = max(max_delta, delta)
     if max_delta < theta:
@@ -312,10 +312,16 @@ def policy_evaluation(env, policy, gamma, theta, max_iterations):
 # POLICY IMPROVEMENT
 def policy_improvement(env, values, gamma):
     policy = np.zeros(env.n_states, dtype=int)
-    # for state in range(env.n_states):
-    #     parametrized_q_func = parametrized_q_value(env, policy, state, values, gamma)
-    #     arg_max_action = arg_max(list(range(env.n_actions)), parametrized_q_func)
-    #     policy[state] = arg_max_action
+    for state in range(env.n_states):
+      action_values = np.zeros(env.n_actions)
+      for action in range(env.n_actions):
+        action_value = 0
+        for next_state in range(env.n_states):
+          action_value += trasition_value(env, next_state, state, action, values, gamma)
+
+        action_values[action] = action_value
+      policy[state] = action_values.argmax()
+
 
     return policy
 
@@ -455,10 +461,20 @@ def linear_sarsa(env, max_episodes, eta, gamma, epsilon, seed=None):
 
     for i in range(max_episodes):
         features = env.reset()
-
+        done = False
         q = features.dot(theta)
+        action = epsilon_greedy_action(q, epsilon[i], random_state)
 
-        # TODO:
+        while not done:
+          q = features.dot(theta)
+          next_features, reward, done = env.step(action)
+          next_q = next_features.dot(theta)
+          next_action = epsilon_greedy_action(next_q, epsilon[i], random_state)
+          delta = (reward + gamma * next_q[next_action]) - q[action]
+
+          theta = theta + (eta[i] * delta * features[action])
+          features = next_features
+          action = next_action
 
     return theta
 
@@ -507,8 +523,8 @@ def main():
     print('')
 
     print('## Policy iteration')
-    # policy, value = policy_iteration(env, gamma, theta, max_iterations)
-    # env.render(policy, value)
+    policy, value = policy_iteration(env, gamma, theta, max_iterations)
+    env.render(policy, value)
 
     print('')
 
@@ -541,10 +557,10 @@ def main():
 
     print('## Linear Sarsa')
 
-    # parameters = linear_sarsa(linear_env, max_episodes, eta,
-                            #   gamma, epsilon, seed=seed)
-    # policy, value = linear_env.decode_policy(parameters)
-    # linear_env.render(policy, value)
+    parameters = linear_sarsa(linear_env, max_episodes, eta,
+                              gamma, epsilon, seed=seed)
+    policy, value = linear_env.decode_policy(parameters)
+    linear_env.render(policy, value)
 
     print('')
 
