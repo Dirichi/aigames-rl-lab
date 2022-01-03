@@ -294,6 +294,7 @@ def state_value(env, policy, state, values, gamma):
 
 ################ Model-based algorithms ################
 
+# POLICY EVALUATION
 def policy_evaluation(env, policy, gamma, theta, max_iterations):
   values = np.zeros(env.n_states, dtype=np.float)
 
@@ -343,15 +344,40 @@ def policy_iteration(env, gamma, theta, max_iterations, policy=None):
     return policy, values
 
 # VALUE ITERATION
-def value_iteration(env, gamma, theta, max_iterations, value=None):
-    if value is None:
-        value = np.zeros(env.n_states)
+def value_iteration(env, gamma, theta, max_iterations, values=None):
+    if values is None:
+        values = np.zeros(env.n_states)
     else:
-        value = np.array(value, dtype=np.float)
+        values = np.array(values, dtype=np.float)
 
-    # TODO:
+    for _ in range(max_iterations):
+      delta = 0
+      for state in range(env.n_states):
+        old_value = values[state]
+        action_values = np.zeros(env.n_actions)
+        for action in range(env.n_actions):
+          action_value = 0
+          for next_state in range(env.n_states):
+            action_value += trasition_value(env, next_state, state, action, values, gamma)
+          action_values[action] = action_value
+        values[state] = action_values.max()
+        delta = max(delta, values[state] - old_value)
 
-    return policy, value
+      if delta < theta:
+        break
+
+    policy = np.zeros(env.n_states, dtype=int)
+
+    for state in range(env.n_states):
+      action_values = np.zeros(env.n_actions)
+      for action in range(env.n_actions):
+        action_value = 0
+        for next_state in range(env.n_states):
+          action_value += trasition_value(env, next_state, state, action, values, gamma)
+        action_values[action] = action_value
+      policy[state] = action_values.argmax()
+
+    return policy, values
 
 ################ Tabular model-free algorithms ################
 
@@ -529,8 +555,8 @@ def main():
     print('')
 
     print('## Value iteration')
-    # policy, value = value_iteration(env, gamma, theta, max_iterations)
-    # env.render(policy, value)
+    policy, value = value_iteration(env, gamma, theta, max_iterations)
+    env.render(policy, value)
 
     print('')
 
