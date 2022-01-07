@@ -333,14 +333,18 @@ def policy_iteration(env, gamma, theta, max_iterations, policy=None):
     else:
         policy = np.array(policy, dtype=int)
 
+    total_iterations = 0
+
     values = np.zeros(env.n_states, dtype=np.float)
     for _ in range(max_iterations):
+        total_iterations += 1
         previous_policy = policy
         values = policy_evaluation(env, policy, gamma, theta, max_iterations)
         policy = policy_improvement(env, values, gamma)
         if (previous_policy == policy).all():
             break
 
+    print("Policy Iteration Num. Iterations: {0}".format(total_iterations))
     return policy, values
 
 # VALUE ITERATION
@@ -349,8 +353,10 @@ def value_iteration(env, gamma, theta, max_iterations, values=None):
         values = np.zeros(env.n_states)
     else:
         values = np.array(values, dtype=np.float)
+    total_iterations = 0
 
     for _ in range(max_iterations):
+      total_iterations += 1
       delta = 0
       for state in range(env.n_states):
         old_value = values[state]
@@ -361,7 +367,7 @@ def value_iteration(env, gamma, theta, max_iterations, values=None):
             action_value += trasition_value(env, next_state, state, action, values, gamma)
           action_values[action] = action_value
         values[state] = action_values.max()
-        delta = max(delta, values[state] - old_value)
+        delta = max(delta, abs(values[state] - old_value))
 
       if delta < theta:
         break
@@ -377,6 +383,7 @@ def value_iteration(env, gamma, theta, max_iterations, values=None):
         action_values[action] = action_value
       policy[state] = action_values.argmax()
 
+    print("Value Iteration Num. Iterations: {0}".format(total_iterations))
     return policy, values
 
 ################ Tabular model-free algorithms ################
@@ -410,6 +417,43 @@ def sarsa(env, max_episodes, eta, gamma, epsilon, seed=None):
 
     return policy, value
 
+def sarsa_convergence_test(env, max_episodes, eta, gamma, epsilon, seed=None):
+    random_state = np.random.RandomState(seed)
+    theta = 0.001
+    max_iterations = 100
+    _, optimum_policy_values = policy_iteration(env, gamma, theta, max_iterations)
+
+    eta = np.linspace(eta, 0, max_episodes)
+    epsilon = np.linspace(epsilon, 0, max_episodes)
+
+    q = np.zeros((env.n_states, env.n_actions))
+
+    for i in range(max_episodes):
+        state = env.reset()
+        done = False
+
+        action = epsilon_greedy_action(q[state], epsilon[i], random_state)
+
+        while not done:
+          next_state, reward, done = env.step(action)
+          next_action = epsilon_greedy_action(q[next_state], epsilon[i], random_state)
+          target_q_value = reward + (gamma * q[next_state][next_action])
+          temporal_difference = target_q_value - q[state][action]
+          q[state][action] = q[state][action] + (eta[i] * temporal_difference)
+
+          state = next_state
+          action = next_action
+        if i % 100 == 0:
+          policy = q.argmax(axis=1)
+          current_policy_values = policy_evaluation(env, policy, gamma, theta, max_iterations)
+          max_delta = (optimum_policy_values - current_policy_values).max()
+          print("Max delta at Episode {0}: {1}".format(i, max_delta))
+
+    policy = q.argmax(axis=1)
+    value = q.max(axis=1)
+
+    return policy, value
+
 def q_learning(env, max_episodes, eta, gamma, epsilon, seed=None):
     random_state = np.random.RandomState(seed)
 
@@ -434,6 +478,40 @@ def q_learning(env, max_episodes, eta, gamma, epsilon, seed=None):
     value = q.max(axis=1)
 
     return policy, value
+
+def q_learning_convergence_test(env, max_episodes, eta, gamma, epsilon, seed=None):
+    random_state = np.random.RandomState(seed)
+    theta = 0.001
+    max_iterations = 100
+    iteration_at_convergence = None
+    max_delta_at_convergence = None
+    _, optimum_policy_values = policy_iteration(env, gamma, theta, max_iterations)
+    eta = np.linspace(eta, 0, max_episodes)
+    epsilon = np.linspace(epsilon, 0, max_episodes)
+
+    q = np.zeros((env.n_states, env.n_actions))
+    policy = q.argmax(axis=1)
+
+    for i in range(max_episodes):
+        state = env.reset()
+        done = False
+
+        while not done:
+          action = epsilon_greedy_action(q[state], epsilon[i], random_state)
+          next_state, reward, done = env.step(action)
+          temporal_difference = reward + (gamma * q[next_state].max()) - q[state][action]
+          q[state][action] = q[state][action] + (eta[i] * temporal_difference)
+
+          state = next_state
+        if i % 100 == 0:
+          policy = q.argmax(axis=1)
+          current_policy_values = policy_evaluation(env, policy, gamma, theta, max_iterations)
+          max_delta = (optimum_policy_values - current_policy_values).max()
+          if max_delta != max_delta_at_convergence:
+            max_delta_at_convergence = max_delta
+            iteration_at_convergence = i
+
+    return iteration_at_convergence, max_delta_at_convergence
 
 ################ Non-tabular model-free algorithms ################
 
@@ -576,6 +654,12 @@ def main():
     print('## Q-learning')
     policy, value = q_learning(env, max_episodes, eta, gamma, epsilon, seed=seed)
     env.render(policy, value)
+
+    print('')
+
+    print('## Q-learning Convergence Test')
+    convergence_episode, diff_from_optimum = q_learning_convergence_test(env, max_episodes, eta, gamma, epsilon, seed=seed)
+    print("Converged at episode {0}, and diff from optimum: {1}".format(convergence_episode, diff_from_optimum))
 
     print('')
 
