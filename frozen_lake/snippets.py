@@ -418,10 +418,24 @@ def sarsa(env, max_episodes, eta, gamma, epsilon, seed=None):
     return policy, value
 
 def sarsa_convergence_test(env, max_episodes, eta, gamma, epsilon, seed=None):
+    """
+    Calculates the number of iterations it takes for the SARSA algorithm to
+    converge to an optimum or close-to optimum policy.
+
+    Returns:
+
+    iteration_at_convergence: The number of iterations it took to converge.
+
+    max_delta_at_convergence: The maximum difference between the values for each
+    state from the policy produced by SARSA and their corresponding values in the
+    optimum policy.
+    """
     random_state = np.random.RandomState(seed)
     theta = 0.001
     max_iterations = 100
     _, optimum_policy_values = policy_iteration(env, gamma, theta, max_iterations)
+    iteration_at_convergence = None
+    max_delta_at_convergence = None
 
     eta = np.linspace(eta, 0, max_episodes)
     epsilon = np.linspace(epsilon, 0, max_episodes)
@@ -443,16 +457,16 @@ def sarsa_convergence_test(env, max_episodes, eta, gamma, epsilon, seed=None):
 
           state = next_state
           action = next_action
-        if i % 100 == 0:
+
+        if i % 10 == 0:
           policy = q.argmax(axis=1)
           current_policy_values = policy_evaluation(env, policy, gamma, theta, max_iterations)
           max_delta = (optimum_policy_values - current_policy_values).max()
-          print("Max delta at Episode {0}: {1}".format(i, max_delta))
+          if max_delta != max_delta_at_convergence:
+            max_delta_at_convergence = max_delta
+            iteration_at_convergence = i
 
-    policy = q.argmax(axis=1)
-    value = q.max(axis=1)
-
-    return policy, value
+    return iteration_at_convergence, max_delta_at_convergence
 
 def q_learning(env, max_episodes, eta, gamma, epsilon, seed=None):
     random_state = np.random.RandomState(seed)
@@ -480,6 +494,18 @@ def q_learning(env, max_episodes, eta, gamma, epsilon, seed=None):
     return policy, value
 
 def q_learning_convergence_test(env, max_episodes, eta, gamma, epsilon, seed=None):
+    """
+    Calculates the number of iterations it takes for the Q-learning algorithm to
+    converge to an optimum or close-to optimum policy.
+
+    Returns:
+
+    iteration_at_convergence: The number of iterations it took to converge.
+
+    max_delta_at_convergence: The maximum difference between the values for each
+    state from the policy produced by Q-learning and their corresponding values
+    in the optimum policy.
+    """
     random_state = np.random.RandomState(seed)
     theta = 0.001
     max_iterations = 100
@@ -503,7 +529,7 @@ def q_learning_convergence_test(env, max_episodes, eta, gamma, epsilon, seed=Non
           q[state][action] = q[state][action] + (eta[i] * temporal_difference)
 
           state = next_state
-        if i % 100 == 0:
+        if i % 10 == 0:
           policy = q.argmax(axis=1)
           current_policy_values = policy_evaluation(env, policy, gamma, theta, max_iterations)
           max_delta = (optimum_policy_values - current_policy_values).max()
@@ -616,7 +642,18 @@ def main():
               ['.', '.', '.', '#'],
               ['#', '.', '.', '$']]
 
+    # Big lake
+    big_lake = [['&', '.', '.', '.', '.', '.', '.', '.'],
+                ['.', '.', '.', '.', '.', '.', '.', '.'],
+                ['.', '.', '.', '#', '.', '.', '.', '.'],
+                ['.', '.', '.', '.', '.', '#', '.', '.'],
+                ['.', '.', '.', '#', '.', '.', '.', '.'],
+                ['.', '#', '#', '.', '.', '.', '#', '.'],
+                ['.', '#', '.', '.', '#', '.', '#', '.'],
+                ['.', '.', '.', '#', '.', '.', '.', '$']]
+
     env = FrozenLake(lake, slip=0.1, max_steps=16, seed=seed)
+    big_env = FrozenLake(big_lake, slip=0.1, max_steps=64, seed=seed)
     test_transition_probs(env)
 
     print('# Model-based algorithms')
@@ -632,9 +669,21 @@ def main():
 
     print('')
 
+    print('## Policy iteration (Big Frozen Lake)')
+    policy, value = policy_iteration(big_env, gamma, theta, max_iterations)
+    big_env.render(policy, value)
+
+    print('')
+
     print('## Value iteration')
     policy, value = value_iteration(env, gamma, theta, max_iterations)
     env.render(policy, value)
+
+    print('')
+
+    print('## Value iteration (Big Frozen Lake)')
+    policy, value = value_iteration(big_env, gamma, theta, max_iterations)
+    big_env.render(policy, value)
 
     print('')
 
@@ -648,6 +697,12 @@ def main():
     print('## Sarsa')
     policy, value = sarsa(env, max_episodes, eta, gamma, epsilon, seed=seed)
     env.render(policy, value)
+
+    print('')
+
+    print('## Sarsa Convergence Test')
+    convergence_episode, diff_from_optimum = sarsa_convergence_test(env, max_episodes, eta, gamma, epsilon, seed=seed)
+    print("Converged at episode {0}, and diff from optimum: {1}".format(convergence_episode, diff_from_optimum))
 
     print('')
 
