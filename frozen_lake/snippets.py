@@ -103,10 +103,6 @@ class FrozenLake(Environment):
         return state, reward, done
 
     def p(self, next_state, state, action):
-        """
-        Returns the probability of transitioning from state to next_state
-        after taking the given action in state.
-        """
         transition = (next_state, state, action)
         key = ",".join([str(el) for el in transition])
         if key not in self.transition_probabilities:
@@ -116,6 +112,10 @@ class FrozenLake(Environment):
         return self.transition_probabilities[key]
 
     def transition_probability(self, next_state, state, action):
+        """
+        Returns the probability of transitioning from state to next_state
+        after taking the given action in state.
+        """
         state_probability_map = {}
         slip_states = [self.apply_action(state, act) for act in range(self.n_actions)]
         slip_probability = self.slip / len(slip_states)
@@ -419,7 +419,7 @@ def sarsa(env, max_episodes, eta, gamma, epsilon, seed=None):
           state = next_state
           action = next_action
 
-      # Track whether the Q-learning policy has converged after every 10 episodes
+      # Track whether the Sarsa policy has converged after every 10 episodes
         if i % 10 == 0:
           policy = q.argmax(axis=1)
           current_policy_values = policy_evaluation(env, policy, gamma, theta, max_iterations)
@@ -427,6 +427,8 @@ def sarsa(env, max_episodes, eta, gamma, epsilon, seed=None):
           if max_delta != converged_max_delta:
             converged_max_delta = max_delta
             converged_episode = i
+          if max_delta == 0:
+            print("Found optimum policy at episode: {0}".format(i))
 
     policy = q.argmax(axis=1)
     value = q.max(axis=1)
@@ -469,6 +471,8 @@ def q_learning(env, max_episodes, eta, gamma, epsilon, seed=None):
           if max_delta != converged_max_delta:
             converged_max_delta = max_delta
             converged_episode = i
+          if max_delta == 0:
+            print("Found optimum policy at episode: {0}".format(i))
 
     policy = q.argmax(axis=1)
     value = q.max(axis=1)
@@ -591,7 +595,8 @@ def main():
 
     env = FrozenLake(lake, slip=0.1, max_steps=16, seed=seed)
     big_env = FrozenLake(big_lake, slip=0.1, max_steps=64, seed=seed)
-    test_transition_probs(env)
+    # Test transition probabilities
+    # test_transition_probs(env)
 
     print('# Model-based algorithms')
     gamma = 0.9
@@ -637,9 +642,21 @@ def main():
 
     print('')
 
+    print('## Sarsa (Big Lake Environment)')
+    policy, value = sarsa(big_env, max_episodes=20000, eta=0.2, gamma=gamma, epsilon=0.9, seed=seed)
+    big_env.render(policy, value)
+
+    print('')
+
     print('## Q-learning')
     policy, value = q_learning(env, max_episodes, eta, gamma, epsilon, seed=seed)
     env.render(policy, value)
+
+    print('')
+
+    print('## Q-learning (Big Lake Environment)')
+    policy, value = q_learning(big_env, max_episodes=20000, eta=0.2, gamma=gamma, epsilon=0.9, seed=seed)
+    big_env.render(policy, value)
 
     print('')
 
